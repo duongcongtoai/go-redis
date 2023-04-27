@@ -199,6 +199,9 @@ type baseClient struct {
 
 func (c *baseClient) clone() *baseClient {
 	clone := *c
+	clone.meter = c.meter
+	clone.tracer = c.tracer
+	clone.connRetrieveTime = c.connRetrieveTime
 	return &clone
 }
 
@@ -635,6 +638,7 @@ func NewClientHacked(opt *Options, meter metric.Meter, tracer trace.Tracer) *Cli
 	}
 	c.init()
 	c.connPool = newConnPool(opt, c.dialHook)
+	hooksMixin
 
 	return &c
 }
