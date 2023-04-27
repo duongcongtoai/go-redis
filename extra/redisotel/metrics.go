@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument"
+	"go.opentelemetry.io/otel/metric/unit"
 )
 
 // InstrumentMetrics starts reporting OpenTelemetry Metrics.
@@ -156,7 +157,7 @@ func addMetricsHook(rdb *redis.Client, conf *config) error {
 	createTime, err := conf.meter.Float64Histogram(
 		"db.client.connections.create_time",
 		instrument.WithDescription("The time it took to create a new connection."),
-		instrument.WithUnit("ms"),
+		instrument.WithUnit(unit.Milliseconds),
 	)
 	if err != nil {
 		return err
@@ -165,7 +166,7 @@ func addMetricsHook(rdb *redis.Client, conf *config) error {
 	useTime, err := conf.meter.Float64Histogram(
 		"db.client.connections.use_time",
 		instrument.WithDescription("The time between borrowing a connection and returning it to the pool."),
-		instrument.WithUnit("ms"),
+		instrument.WithUnit(unit.Milliseconds),
 	)
 	if err != nil {
 		return err
@@ -238,7 +239,7 @@ func (mh *metricsHook) ProcessPipelineHook(
 
 		mh.useTime.Record(ctx, milliseconds(dur), attrs...)
 
-		return err
+		return er"ms"r
 	}
 }
 

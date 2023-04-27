@@ -14,6 +14,7 @@ import (
 	"github.com/redis/go-redis/v9/internal/proto"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/instrument"
+	"go.opentelemetry.io/otel/metric/unit"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -618,7 +619,7 @@ func NewClientHacked(opt *Options, meter metric.Meter, tracer trace.Tracer) *Cli
 	connGetTime, err := meter.Float64Histogram(
 		"db.client.connections.retrieve_time",
 		instrument.WithDescription("The time between borrowing a connection and returning it to the pool."),
-		instrument.WithUnit("ms"),
+		instrument.WithUnit(unit.Milliseconds),
 	)
 	if err != nil {
 		panic(err)
