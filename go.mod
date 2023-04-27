@@ -1,4 +1,4 @@
-module github.com/duongcongtoai/go-redis/v9
+module github.com/redis/go-redis/v9
 
 go 1.18
 
@@ -14,4 +14,3 @@ require (
 
 require go.opentelemetry.io/otel v1.14.0 // indirect
 
-replace github.com/redis/go-redis/v9 => github.com/duongcongtoai/go-redis/v9 v9.0.0-20230427181041-efba7b872e0a
