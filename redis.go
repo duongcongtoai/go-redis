@@ -12,6 +12,9 @@ import (
 	"github.com/redis/go-redis/v9/internal/hscan"
 	"github.com/redis/go-redis/v9/internal/pool"
 	"github.com/redis/go-redis/v9/internal/proto"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/instrument"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Scanner internal/hscan.Scanner exposed interface.
@@ -183,6 +186,10 @@ func (hs *hooksMixin) processTxPipelineHook(ctx context.Context, cmds []Cmder) e
 //------------------------------------------------------------------------------
 
 type baseClient struct {
+	meter            metric.Meter
+	tracer           trace.Tracer
+	connRetrieveTime instrument.Float64Histogram
+
 	opt      *Options
 	connPool pool.Pooler
 
@@ -339,14 +346,22 @@ func (c *baseClient) releaseConn(ctx context.Context, cn *pool.Conn, err error) 
 		c.connPool.Put(ctx, cn)
 	}
 }
+func milliseconds(d time.Duration) float64 {
+	return float64(d) / float64(time.Millisecond)
+}
 
 func (c *baseClient) withConn(
 	ctx context.Context, fn func(context.Context, *pool.Conn) error,
 ) error {
-	cn, err := c.getConn(ctx)
+	start := time.Now()
+	childCtx, span := c.tracer.Start(ctx, "baseClient.getConn")
+	cn, err := c.getConn(childCtx)
 	if err != nil {
+		span.End()
 		return err
 	}
+	c.connRetrieveTime.Record(ctx, milliseconds(time.Since(start)))
+	span.End()
 
 	var fnErr error
 	defer func() {
@@ -596,6 +611,31 @@ type Client struct {
 	*baseClient
 	cmdable
 	hooksMixin
+}
+
+func NewClientHacked(opt *Options, meter metric.Meter, tracer trace.Tracer) *Client {
+	opt.init()
+	connGetTime, err := meter.Float64Histogram(
+		"db.client.connections.retrieve_time",
+		instrument.WithDescription("The time between borrowing a connection and returning it to the pool."),
+		instrument.WithUnit("ms"),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	c := Client{
+		baseClient: &baseClient{
+			connRetrieveTime: connGetTime,
+			meter:            meter,
+			tracer:           tracer,
+			opt:              opt,
+		},
+	}
+	c.init()
+	c.connPool = newConnPool(opt, c.dialHook)
+
+	return &c
 }
 
 // NewClient returns a client to the Redis Server specified by Options.

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9/internal"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -70,7 +72,9 @@ type lastDialErrorWrap struct {
 }
 
 type ConnPool struct {
-	cfg *Options
+	meter  metric.Meter
+	tracer trace.Tracer
+	cfg    *Options
 
 	dialErrorsNum uint32 // atomic
 	lastDialError atomic.Value
@@ -90,6 +94,26 @@ type ConnPool struct {
 }
 
 var _ Pooler = (*ConnPool)(nil)
+
+func NewConnPoolHack(opt *Options, mp metric.MeterProvider, tp trace.TracerProvider) *ConnPool {
+	meter := mp.Meter("hacked-redis")
+	tracer := tp.Tracer("hacked-redis")
+	p := &ConnPool{
+		cfg:    opt,
+		meter:  meter,
+		tracer: tracer,
+
+		queue:     make(chan struct{}, opt.PoolSize),
+		conns:     make([]*Conn, 0, opt.PoolSize),
+		idleConns: make([]*Conn, 0, opt.PoolSize),
+	}
+
+	p.connsMu.Lock()
+	p.checkMinIdleConns()
+	p.connsMu.Unlock()
+
+	return p
+}
 
 func NewConnPool(opt *Options) *ConnPool {
 	p := &ConnPool{
