@@ -624,6 +624,8 @@ func NewClientHacked(opt *Options, meter metric.Meter, tracer trace.Tracer) *Cli
 		instrument.WithDescription("The time between borrowing a connection and returning it to the pool."),
 		instrument.WithUnit(unit.Milliseconds),
 	)
+	globTracer = tracer
+	globMeter = meter
 	if err != nil {
 		panic(err)
 	}
