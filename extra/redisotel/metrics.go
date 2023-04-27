@@ -239,7 +239,7 @@ func (mh *metricsHook) ProcessPipelineHook(
 
 		mh.useTime.Record(ctx, milliseconds(dur), attrs...)
 
-		return er"ms"r
+		return err
 	}
 }
 
