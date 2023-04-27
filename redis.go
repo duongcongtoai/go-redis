@@ -187,10 +187,6 @@ func (hs *hooksMixin) processTxPipelineHook(ctx context.Context, cmds []Cmder) e
 //------------------------------------------------------------------------------
 
 type baseClient struct {
-	meter            metric.Meter
-	tracer           trace.Tracer
-	connRetrieveTime instrument.Float64Histogram
-
 	opt      *Options
 	connPool pool.Pooler
 
@@ -199,9 +195,6 @@ type baseClient struct {
 
 func (c *baseClient) clone() *baseClient {
 	clone := *c
-	clone.meter = c.meter
-	clone.tracer = c.tracer
-	clone.connRetrieveTime = c.connRetrieveTime
 	return &clone
 }
 
@@ -358,13 +351,13 @@ func (c *baseClient) withConn(
 	ctx context.Context, fn func(context.Context, *pool.Conn) error,
 ) error {
 	start := time.Now()
-	childCtx, span := c.tracer.Start(ctx, "baseClient.getConn")
+	childCtx, span := globTracer.Start(ctx, "baseClient.getConn")
 	cn, err := c.getConn(childCtx)
 	if err != nil {
 		span.End()
 		return err
 	}
-	c.connRetrieveTime.Record(ctx, milliseconds(time.Since(start)))
+	connRetrieveTime.Record(ctx, milliseconds(time.Since(start)))
 	span.End()
 
 	var fnErr error
@@ -617,9 +610,16 @@ type Client struct {
 	hooksMixin
 }
 
+var (
+	globMeter        metric.Meter
+	globTracer       trace.Tracer
+	connRetrieveTime instrument.Float64Histogram
+)
+
 func NewClientHacked(opt *Options, meter metric.Meter, tracer trace.Tracer) *Client {
 	opt.init()
-	connGetTime, err := meter.Float64Histogram(
+	var err error
+	connRetrieveTime, err = meter.Float64Histogram(
 		"db.client.connections.retrieve_time",
 		instrument.WithDescription("The time between borrowing a connection and returning it to the pool."),
 		instrument.WithUnit(unit.Milliseconds),
@@ -630,10 +630,7 @@ func NewClientHacked(opt *Options, meter metric.Meter, tracer trace.Tracer) *Cli
 
 	c := Client{
 		baseClient: &baseClient{
-			connRetrieveTime: connGetTime,
-			meter:            meter,
-			tracer:           tracer,
-			opt:              opt,
+			opt: opt,
 		},
 	}
 	c.init()
