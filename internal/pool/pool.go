@@ -10,6 +10,8 @@ import (
 
 	"github.com/redis/go-redis/v9/internal"
 	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/instrument"
+	"go.opentelemetry.io/otel/metric/unit"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -72,9 +74,10 @@ type lastDialErrorWrap struct {
 }
 
 type ConnPool struct {
-	meter  metric.Meter
-	tracer trace.Tracer
-	cfg    *Options
+	meter          metric.Meter
+	tracer         trace.Tracer
+	waitTurnMetric instrument.Float64Histogram
+	cfg            *Options
 
 	dialErrorsNum uint32 // atomic
 	lastDialError atomic.Value
@@ -95,13 +98,21 @@ type ConnPool struct {
 
 var _ Pooler = (*ConnPool)(nil)
 
-func NewConnPoolHack(opt *Options, mp metric.MeterProvider, tp trace.TracerProvider) *ConnPool {
-	meter := mp.Meter("hacked-redis")
-	tracer := tp.Tracer("hacked-redis")
+func NewConnPoolHack(opt *Options, mp metric.Meter, tp trace.Tracer) *ConnPool {
+	waitTurnTime, err := mp.Float64Histogram(
+		"db.client.connections.wait_turn_time",
+		instrument.WithDescription("The time between borrowing a connection and returning it to the pool."),
+		instrument.WithUnit(unit.Milliseconds),
+	)
+	if err != nil {
+		panic(err)
+	}
+
 	p := &ConnPool{
-		cfg:    opt,
-		meter:  meter,
-		tracer: tracer,
+		cfg:            opt,
+		meter:          mp,
+		waitTurnMetric: waitTurnTime,
+		tracer:         tp,
 
 		queue:     make(chan struct{}, opt.PoolSize),
 		conns:     make([]*Conn, 0, opt.PoolSize),
@@ -306,8 +317,15 @@ func (p *ConnPool) Get(ctx context.Context) (*Conn, error) {
 
 	return newcn, nil
 }
+func milliseconds(d time.Duration) float64 {
+	return float64(d) / float64(time.Millisecond)
+}
 
 func (p *ConnPool) waitTurn(ctx context.Context) error {
+	now := time.Now()
+	defer func() {
+		p.waitTurnMetric.Record(ctx, milliseconds(time.Since(now)))
+	}()
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

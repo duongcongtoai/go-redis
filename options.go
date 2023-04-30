@@ -484,7 +484,7 @@ func newConnPool(
 	opt *Options,
 	dialer func(ctx context.Context, network, addr string) (net.Conn, error),
 ) *pool.ConnPool {
-	return pool.NewConnPool(&pool.Options{
+	return pool.NewConnPoolHack(&pool.Options{
 		Dialer: func(ctx context.Context) (net.Conn, error) {
 			return dialer(ctx, opt.Network, opt.Addr)
 		},
@@ -495,5 +495,5 @@ func newConnPool(
 		MaxIdleConns:    opt.MaxIdleConns,
 		ConnMaxIdleTime: opt.ConnMaxIdleTime,
 		ConnMaxLifetime: opt.ConnMaxLifetime,
-	})
+	}, globMeter, globTracer)
 }
